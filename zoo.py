@@ -157,17 +157,30 @@ class Florence2(fom.Model):
     
     def __init__(
         self, 
-        model_path: str
+        model_path: str,
+        **kwargs
     ):
+        """Initialize the Florence-2 model.
+        
+        Args:
+            model_path (str): Model path or HuggingFace repo name
+            **kwargs: Additional configuration parameters including:
+                - operation (str): The operation to perform
+                - Additional operation-specific parameters
+        """
         if not model_path:
             raise ValueError("model_path is required")
-        
-        """Initialize the Florence-2 model."""
+            
         self.model_path = model_path
         
-        # Operation and parameters will be set at apply time
+        # Operation and parameters will be set at apply time by default
         self.operation = None
         self.params = {}
+        
+        # If operation is provided in kwargs, set it now
+        if "operation" in kwargs:
+            operation = kwargs.pop("operation")
+            self.set_operation(operation, **kwargs)
         
         # Set device
         self.device = get_device()
@@ -177,7 +190,7 @@ class Florence2(fom.Model):
         
         # Lazy loading of transformer components
         from transformers import AutoModelForCausalLM, AutoProcessor
-        
+            
         # Check if model_path is a local directory or HuggingFace model ID
         if os.path.isdir(model_path):
             # If it's a local directory (from the zoo download), use that
