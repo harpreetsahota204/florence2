@@ -585,28 +585,23 @@ class Florence2(fom.Model):
         # Call the appropriate prediction method with the image
         return predict_method(image)
 
-    def predict(self, image: np.ndarray, operation: str = None, **kwargs) -> Any:
+    def predict(self, image: np.ndarray, **kwargs) -> Any:
         """Process an image array with Florence2 model.
         
-        This method serves as the main entry point when using FiftyOne's apply_model functionality.
-        It converts the input numpy array to a PIL Image and routes it through the internal 
-        prediction pipeline.
-        
         Args:
-            image (np.ndarray): Input image as a numpy array in RGB format with shape (H,W,3)
-            operation (str, optional): Operation to perform for this prediction
-            **kwargs: Operation-specific parameters
+            image (np.ndarray): Input image as a numpy array in RGB format 
+            **kwargs: Operation-specific parameters including 'operation'
             
         Returns:
             Any: Operation-specific result type
-            
-        Raises:
-            ValueError: If no operation is set
         """
-        # If an operation is provided for this specific prediction, configure the model
+        # Extract operation from kwargs
+        operation = kwargs.pop("operation", None)
+        
+        # If operation is provided, set it (along with other parameters)
         if operation is not None:
             self.set_operation(operation, **kwargs)
-            
+                
         # Ensure an operation is set
         if self.operation is None:
             raise ValueError("No operation set. Either call set_operation() first, or pass operation parameter.")
