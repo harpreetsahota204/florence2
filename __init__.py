@@ -30,15 +30,19 @@ def load_model(model_name, model_path, **kwargs):
     """Loads the model.
 
     Args:
-        model_name: the name of the model to load
-        model_path: the absolute directory containing the downloaded model
-        **kwargs: additional parameters (unused in this implementation)
+        model_name: the name of the model to load, as declared by the
+            ``base_name`` and optional ``version`` fields of the manifest
+        model_path: the absolute filename or directory to which the model was
+            donwloaded, as declared by the ``base_filename`` field of the
+            manifest
+        **kwargs: optional keyword arguments that configure how the model
+            is loaded
 
     Returns:
-        a fiftyone.core.models.Model
+        a :class:`fiftyone.core.models.Model`
     """
-    if model_name != "voxel51/florence2":
-        raise ValueError(f"Unsupported model name '{model_name}'")
+    # if model_name != "voxel51/florence2":
+    #     raise ValueError(f"Unsupported model name '{model_name}'")
 
     # Import Florence2 from zoo.py
     from .zoo import Florence2
@@ -65,8 +69,8 @@ def resolve_input(model_name, ctx):
     Returns:
         a fiftyone.operators.types.Property
     """
-    if model_name != "voxel51/florence2":
-        raise ValueError(f"Unsupported model name '{model_name}'")
+    # if model_name != "voxel51/florence2":
+    #     raise ValueError(f"Unsupported model name '{model_name}'")
 
     inputs = types.Object()
     
