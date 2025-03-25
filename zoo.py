@@ -159,6 +159,9 @@ class Florence2(fom.Model):
         self, 
         model_path: str
     ):
+        if not model_path:
+            raise ValueError("model_path is required")
+        
         """Initialize the Florence-2 model."""
         self.model_path = model_path
         

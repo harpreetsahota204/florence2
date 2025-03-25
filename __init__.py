@@ -14,7 +14,6 @@ from .zoo import FLORENCE2_OPERATIONS, Florence2
 
 logger = logging.getLogger(__name__)
 
-
 def download_model(model_name, model_path):
     """Downloads the model.
 
@@ -43,6 +42,12 @@ def load_model(model_name, model_path, **kwargs):
 
     # Import Florence2 from zoo.py
     from .zoo import Florence2
+    
+    if not model_path or not os.path.isdir(model_path):
+        raise ValueError(
+            f"Invalid model_path: '{model_path}'. Please ensure the model has been downloaded "
+            "using fiftyone.zoo.download_zoo_model('voxel51/florence2')"
+        )
     
     logger.info(f"Loading Florence2 model from {model_path}")
 
