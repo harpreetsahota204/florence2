@@ -41,9 +41,6 @@ def load_model(model_name, model_path, **kwargs):
     Returns:
         a :class:`fiftyone.core.models.Model`
     """
-    # if model_name != "voxel51/florence2":
-    #     raise ValueError(f"Unsupported model name '{model_name}'")
-
     # Import Florence2 from zoo.py
     from .zoo import Florence2
     
@@ -77,55 +74,44 @@ def resolve_input(model_name, ctx):
     # Operation selection
     inputs.enum(
         "operation",
-        options=list(FLORENCE2_OPERATIONS.keys()),
-        default="caption",
+        values=list(FLORENCE2_OPERATIONS.keys()),
+        default=None,
         required=True,
         label="Operation",
-        description="Type of operation to perform with Florence2 model"
+        description="Type of task to perform with Florence2 model",
+        view=types.AutocompleteView()
     )
     
     # Caption detail level
     inputs.enum(
         "detail_level",
-        options=["basic", "detailed", "more_detailed"],
-        default="basic",
+        values=["basic", "detailed", "more_detailed"],
+        default=None,
         required=False,
         label="Caption detail level",
         description="Level of detail in generated captions",
-        view=types.VisibilityView(
-            tied_field="operation",
-            tied_values=["caption"],
-            default_visibility=False,
-        ),
+        view=types.AutocompleteView(),
     )
     
     # OCR parameters
     inputs.bool(
         "store_region_info",
-        default=False,
+        default=None,
         required=False,
         label="Store region information",
         description="Whether to include text region bounding boxes",
-        view=types.VisibilityView(
-            tied_field="operation",
-            tied_values=["ocr"],
-            default_visibility=False,
-        ),
+        view=types.AutocompleteView()
     )
     
     # Detection parameters
     inputs.enum(
         "detection_type",
         options=["detection", "dense_region_caption", "region_proposal", "open_vocabulary_detection"],
-        default="detection",
+        default=None,
         required=False,
         label="Detection type",
         description="Type of detection to perform",
-        view=types.VisibilityView(
-            tied_field="operation",
-            tied_values=["detection"],
-            default_visibility=False,
-        ),
+        view=types.AutocompleteView()
     )
     
     inputs.str(
@@ -133,12 +119,8 @@ def resolve_input(model_name, ctx):
         default=None,
         required=False,
         label="Text prompt",
-        description="Optional prompt for guiding detection (e.g., 'Find all animals in this image')",
-        view=types.VisibilityView(
-            tied_field="operation",
-            tied_values=["detection"],
-            default_visibility=False,
-        ),
+        description="Optional prompt for guiding detection (Florence2 only supports one class prompt)",
+        view=types.AutocompleteView()
     )
     
     # Phrase grounding parameters
@@ -148,11 +130,7 @@ def resolve_input(model_name, ctx):
         required=False,
         label="Caption",
         description="Caption text to ground in the image",
-        view=types.VisibilityView(
-            tied_field="operation",
-            tied_values=["phrase_grounding"],
-            default_visibility=False,
-        ),
+        view=types.AutocompleteView()
     )
     
     inputs.str(
@@ -161,11 +139,7 @@ def resolve_input(model_name, ctx):
         required=False,
         label="Caption field",
         description="Name of the sample field containing caption to ground",
-        view=types.VisibilityView(
-            tied_field="operation",
-            tied_values=["phrase_grounding"],
-            default_visibility=False,
-        ),
+        view=types.AutocompleteView()
     )
     
     # Segmentation parameters
@@ -175,11 +149,7 @@ def resolve_input(model_name, ctx):
         required=False,
         label="Expression",
         description="Natural language expression describing the object to segment",
-        view=types.VisibilityView(
-            tied_field="operation",
-            tied_values=["segmentation"],
-            default_visibility=False,
-        ),
+        view=types.AutocompleteView()
     )
     
     inputs.str(
@@ -188,11 +158,7 @@ def resolve_input(model_name, ctx):
         required=False,
         label="Expression field",
         description="Name of the sample field containing the expression",
-        view=types.VisibilityView(
-            tied_field="operation",
-            tied_values=["segmentation"],
-            default_visibility=False,
-        ),
+        view=types.AutocompleteView()
     )
     
     return types.Property(inputs)
@@ -218,12 +184,11 @@ def parse_parameters(model_name, ctx, params):
     # Validate required parameters for specific operations
     if operation == "phrase_grounding":
         if not params.get("caption") and not params.get("caption_field"):
-            raise ValueError("Either 'caption' or 'caption_field' must be provided for phrase_grounding")
+            raise ValueError("Either 'caption' or 'caption_field' must be provided for phrase grounding")
             
-        # If both are provided, prefer caption over caption_field
+        # If both are provided, raise an error
         if params.get("caption") and params.get("caption_field"):
-            logger.warning("Both 'caption' and 'caption_field' provided; using 'caption'")
-            params.pop("caption_field")
+            raise ValueError("Only ONE of 'caption' or 'caption_field' can be provided for phrase grounding")
             
     if operation == "segmentation":
         if not params.get("expression") and not params.get("expression_field"):
@@ -231,5 +196,4 @@ def parse_parameters(model_name, ctx, params):
             
         # If both are provided, prefer expression over expression_field  
         if params.get("expression") and params.get("expression_field"):
-            logger.warning("Both 'expression' and 'expression_field' provided; using 'expression'")
-            params.pop("expression_field")
+            raise ValueError("Only ONE of 'expression' or 'expression_field' can be provided for segmentation")
