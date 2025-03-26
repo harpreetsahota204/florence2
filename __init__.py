@@ -53,7 +53,7 @@ def load_model(model_name, model_path, **kwargs):
     logger.info(f"Loading Florence2 model from {model_path}")
 
     # Create and return the model - operations specified at apply time
-    return Florence2(model_path=model_path)
+    return Florence2(model_path=model_path, **kwargs)
 
 
 def resolve_input(model_name, ctx):
