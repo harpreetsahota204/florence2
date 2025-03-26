@@ -20,6 +20,7 @@ FLORENCE2_OPERATIONS = {
             "detailed": "<DETAILED_CAPTION>",
             "more_detailed": "<MORE_DETAILED_CAPTION>",
             "basic": "<CAPTION>",
+            None: "<CAPTION>"  # Default value
         }
     },
     "ocr": {
@@ -35,6 +36,7 @@ FLORENCE2_OPERATIONS = {
             "dense_region_caption": "<DENSE_REGION_CAPTION>",
             "region_proposal": "<REGION_PROPOSAL>",
             "open_vocabulary_detection": "<OPEN_VOCABULARY_DETECTION>",
+            None: "<OD>"  # Default value
         }
     },
     "phrase_grounding": {
@@ -137,6 +139,7 @@ def _convert_polyline(contour, width, height):
     xy_points.append((x_points[0], curr_y))
     return xy_points
 
+
 class Florence2(fom.Model):
     """A FiftyOne model for running the Florence-2 multimodal model.
     
@@ -147,19 +150,9 @@ class Florence2(fom.Model):
     - Phrase grounding (linking caption phrases to regions)
     - Referring expression segmentation
     
-    Note:
-        Operations and their parameters are validated when set. Each operation
-        requires specific parameters and may produce different types of output.
-        Operation state is managed to prevent parameter leakage between operations.
-    
     Args:
-        model_path (str): Model path or HuggingFace repo name
-        **kwargs: Additional configuration parameters including:
-            - operation (str, optional): Initial operation to perform
-            - Additional operation-specific parameters
-            
-    Raises:
-        ValueError: If model_path is not provided or if initial operation validation fails
+        model_path (str, optional): Model path or HuggingFace repo name.
+                                   Defaults to "microsoft/Florence-2-base-ft".
     """
     
     def __init__(
@@ -167,141 +160,119 @@ class Florence2(fom.Model):
         model_path: str,
         **kwargs
     ):
+        """Initialize the Florence-2 model.
+        
+        Args:
+            model_path (str): Model path or HuggingFace repo name
+            **kwargs: Additional configuration parameters including:
+                - operation (str): The operation to perform
+                - Additional operation-specific parameters
+        """
         if not model_path:
             raise ValueError("model_path is required")
             
         self.model_path = model_path
         
-        # Clear initial operation state
-        self._clear_operation_state()
+        # Operation and parameters will be set at apply time by default
+        self.operation = None
+        self.params = {}
         
-        # Set device and dtype
-        self.device = get_device()
-        logger.info(f"Using device: {self.device}")
-        
-        self.torch_dtype = torch.float16 if torch.cuda.is_available() else None
-        logger.info(f"Using dtype: {self.torch_dtype}")
-        
-        # Load model components
-        self._load_model_components()
-        
-        # Set initial operation if provided
+        # If operation is provided in kwargs, set it now
         if "operation" in kwargs:
             operation = kwargs.pop("operation")
             self.set_operation(operation, **kwargs)
-
-    def _clear_operation_state(self):
-        """Reset operation state and parameters.
         
-        This ensures clean state between operations and prevents parameter leakage.
-        """
-        self.operation = None 
-        self.params = {}
+        # Set device
+        self.device = get_device()
+        logger.info(f"Using device: {self.device}")
 
-    def _load_model_components(self):
-        """Load transformer model components.
+        self.torch_dtype = torch.float16 if torch.cuda.is_available() else None
         
-        Handles loading from either local directory or HuggingFace hub.
-        Sets up model and processor with appropriate device and dtype settings.
-        """
+        # Lazy loading of transformer components
         from transformers import AutoModelForCausalLM, AutoProcessor
-        
-        # Determine if model_path is local or HuggingFace ID
-        is_local = os.path.isdir(self.model_path)
-        source = "local path" if is_local else "HuggingFace"
-        logger.info(f"Loading model from {source}: {self.model_path}")
-        
-        # Initialize model with appropriate settings
-        model_kwargs = {
-            "trust_remote_code": True,
-            "device_map": self.device
-        }
-        if self.torch_dtype:
-            model_kwargs["torch_dtype"] = self.torch_dtype
             
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_path, 
-            **model_kwargs
-        )
-        
-        self.processor = AutoProcessor.from_pretrained(
-            self.model_path,
-            trust_remote_code=True
-        )
+        # Check if model_path is a local directory or HuggingFace model ID
+        if os.path.isdir(model_path):
+            # If it's a local directory (from the zoo download), use that
+            logger.info(f"Loading model from local path: {model_path}")
+            # Initialize model
+            if self.torch_dtype:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_path, 
+                    trust_remote_code=True,
+                    device_map=self.device,
+                    torch_dtype=self.torch_dtype
+                )
+            else:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_path, 
+                    trust_remote_code=True,
+                    device_map=self.device
+                )
 
-    def set_operation(self, operation: str, **kwargs) -> "Florence2":
+            self.processor = AutoProcessor.from_pretrained(
+                model_path, 
+                trust_remote_code=True
+            )
+        else:
+            # If it's a HuggingFace model ID, load directly from HF
+            logger.info(f"Loading model from HuggingFace: {model_path}")
+            # Initialize model
+            if self.torch_dtype:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_path, 
+                    trust_remote_code=True,
+                    device_map=self.device,
+                    torch_dtype=self.torch_dtype
+                )
+            else:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_path, 
+                    trust_remote_code=True,
+                    device_map=self.device
+                )
+
+            self.processor = AutoProcessor.from_pretrained(
+                model_path, 
+                trust_remote_code=True
+            )
+
+    def set_operation(self, operation: str, **kwargs):
         """Set the current operation and parameters.
         
-        This method validates the operation and its parameters, ensuring a clean
-        state for each new operation.
-        
         Args:
-            operation (str): The operation to perform
+            operation: The operation to perform
             **kwargs: Operation-specific parameters
             
         Returns:
-            Florence2: The model instance for method chaining
+            self: The model instance for method chaining
         
         Raises:
             ValueError: If the operation is invalid or required parameters are missing
         """
-        # Clear previous operation state
-        self._clear_operation_state()
-        
         # Validate operation
         if operation not in FLORENCE2_OPERATIONS:
-            raise ValueError(
-                f"Invalid operation: {operation}. "
-                f"Must be one of {list(FLORENCE2_OPERATIONS.keys())}"
-            )
+            raise ValueError(f"Invalid operation: {operation}. Must be one of {list(FLORENCE2_OPERATIONS.keys())}")
         
-        # Store new operation and validated parameters
+        # Operation-specific validation
+        if operation == "phrase_grounding":
+            if "caption_field" not in kwargs and "caption" not in kwargs:
+                raise ValueError("Either 'caption_field' or 'caption' must be provided for phrase_grounding operation")
+        
+        if operation == "segmentation":
+            if "expression_field" not in kwargs and "expression" not in kwargs:
+                raise ValueError("Either 'expression_field' or 'expression' must be provided for segmentation operation")
+        
+        # Set operation and parameters
         self.operation = operation
-        self.params = self._validate_operation_params(operation, kwargs)
+        self.params = kwargs
         
         return self
 
-    def _validate_operation_params(self, operation: str, params: Dict) -> Dict:
-        """Validate operation parameters.
-        
-        Ensures all required parameters are present and valid for the given operation.
-        
-        Args:
-            operation (str): The operation being validated
-            params (Dict): Parameters to validate
-            
-        Returns:
-            Dict: Validated parameters
-            
-        Raises:
-            ValueError: If required parameters are missing or invalid
-        """
-        operation_config = FLORENCE2_OPERATIONS[operation]
-        
-        # Validate operation-specific requirements
-        if operation == "phrase_grounding":
-            if "caption_field" not in params and "caption" not in params:
-                raise ValueError(
-                    "Either 'caption_field' or 'caption' must be provided "
-                    "for phrase_grounding operation"
-                )
-                
-        if operation == "segmentation":
-            if "expression_field" not in params and "expression" not in params:
-                raise ValueError(
-                    "Either 'expression_field' or 'expression' must be provided "
-                    "for segmentation operation"
-                )
-
-        # Add additional parameter validation as needed
-        
-        return params
-
     @property
-    def media_type(self) -> str:
+    def media_type(self):
         """Get the media type supported by this model."""
         return "image"
-
 
     def _generate_and_parse(
         self,
@@ -613,41 +584,30 @@ class Florence2(fom.Model):
             
         # Call the appropriate prediction method with the image
         return predict_method(image)
-    
+
     def predict(self, image: np.ndarray, **kwargs) -> Any:
-        """Process an image with the Florence2 model.
-        
-        This method ensures clean operation state and proper image processing.
+        """Process an image array with Florence2 model.
         
         Args:
-            image (np.ndarray): Input image as a numpy array in RGB format
-            **kwargs: Optional parameters including:
-                - operation (str, optional): Operation to perform
-                - Additional operation-specific parameters
-                
-        Returns:
-            Any: Operation-specific result type:
-                - caption: str
-                - ocr: Union[str, Detections]
-                - detection: Detections
-                - phrase_grounding: Detections
-                - segmentation: Optional[Polylines]
-                
-        Raises:
-            ValueError: If no operation is set or if validation fails
-        """
-        # Set new operation if provided
-        if "operation" in kwargs:
-            operation = kwargs.pop("operation")
-            self.set_operation(operation, **kwargs)
-        
-        # Validate operation is set
-        if self.operation is None:
-            raise ValueError(
-                "No operation set. Call set_operation() first or provide "
-                "operation parameter."
-            )
+            image (np.ndarray): Input image as a numpy array in RGB format 
+            **kwargs: Operation-specific parameters including 'operation'
             
-        # Convert to PIL Image and process
+        Returns:
+            Any: Operation-specific result type
+        """
+        # Extract operation from kwargs
+        operation = kwargs.pop("operation", None)
+        
+        # If operation is provided, set it (along with other parameters)
+        if operation is not None:
+            self.set_operation(operation, **kwargs)
+                
+        # Ensure an operation is set
+        if self.operation is None:
+            raise ValueError("No operation set. Either call set_operation() first, or pass operation parameter.")
+        
+        # Convert numpy array to PIL Image format required by Florence2
         pil_image = Image.fromarray(image)
+        
+        # Route through internal prediction pipeline
         return self._predict(pil_image)
