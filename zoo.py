@@ -20,7 +20,6 @@ FLORENCE2_OPERATIONS = {
             "detailed": "<DETAILED_CAPTION>",
             "more_detailed": "<MORE_DETAILED_CAPTION>",
             "basic": "<CAPTION>",
-            None: "<CAPTION>"  # Default value
         }
     },
     "ocr": {
@@ -36,7 +35,6 @@ FLORENCE2_OPERATIONS = {
             "dense_region_caption": "<DENSE_REGION_CAPTION>",
             "region_proposal": "<REGION_PROPOSAL>",
             "open_vocabulary_detection": "<OPEN_VOCABULARY_DETECTION>",
-            None: "<OD>"  # Default value
         }
     },
     "phrase_grounding": {
