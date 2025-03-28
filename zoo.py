@@ -143,7 +143,7 @@ def _convert_polyline(contour, width, height):
     return xy_points
 
 
-class Florence2(fom.Model):
+class Florence2(fom.Model, fom.SamplesMixin):
     """A FiftyOne model for running the Florence-2 multimodal model.
     
     The Florence-2 model supports multiple vision-language tasks including:
@@ -190,86 +190,53 @@ class Florence2(fom.Model):
         logger.info(f"Using device: {self.device}")
 
         self.torch_dtype = torch.float16 if torch.cuda.is_available() else None
-    
-        
-            
-        # Check if model_path is a local directory or HuggingFace model ID
-        if os.path.isdir(model_path):
-            # If it's a local directory (from the zoo download), use that
-            logger.info(f"Loading model from local path: {model_path}")
-            # Initialize model
-            if self.torch_dtype:
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_path, 
-                    trust_remote_code=True,
-                    device_map=self.device,
-                    torch_dtype=self.torch_dtype
-                )
-            else:
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_path, 
-                    trust_remote_code=True,
-                    device_map=self.device
-                )
 
-            self.processor = AutoProcessor.from_pretrained(
+        logger.info(f"Loading model from local path: {model_path}")
+        # Initialize model
+        if self.torch_dtype:
+            self.model = AutoModelForCausalLM.from_pretrained(
                 model_path, 
-                trust_remote_code=True
+                trust_remote_code=True,
+                device_map=self.device,
+                torch_dtype=self.torch_dtype
             )
         else:
-            # If it's a HuggingFace model ID, load directly from HF
-            logger.info(f"Loading model from HuggingFace: {model_path}")
-            # Initialize model
-            if self.torch_dtype:
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_path, 
-                    trust_remote_code=True,
-                    device_map=self.device,
-                    torch_dtype=self.torch_dtype
-                )
-            else:
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_path, 
-                    trust_remote_code=True,
-                    device_map=self.device
-                )
-
-            self.processor = AutoProcessor.from_pretrained(
+            self.model = AutoModelForCausalLM.from_pretrained(
                 model_path, 
-                trust_remote_code=True
+                trust_remote_code=True,
+                device_map=self.device
             )
 
+        self.processor = AutoProcessor.from_pretrained(
+            model_path, 
+            trust_remote_code=True
+        )
+
     def set_operation(self, operation: str, **kwargs):
-        """Set the current operation and parameters.
-        
-        Args:
-            operation: The operation to perform
-            **kwargs: Operation-specific parameters
-            
-        Returns:
-            self: The model instance for method chaining
-        
-        Raises:
-            ValueError: If the operation is invalid or required parameters are missing
-        """
-        # Validate operation
+        """Set the current operation and parameters."""
         if operation not in FLORENCE2_OPERATIONS:
             raise ValueError(f"Invalid operation: {operation}. Must be one of {list(FLORENCE2_OPERATIONS.keys())}")
         
-        # Operation-specific validation
         if operation == "phrase_grounding":
-            if "caption_field" not in kwargs and "caption" not in kwargs:
-                raise ValueError("Either 'caption_field' or 'caption' must be provided for phrase_grounding operation")
+            if "caption_field" in kwargs:
+                # Tell FiftyOne we need the caption field
+                self.needs_fields = {kwargs["caption_field"]: kwargs["caption_field"]}
+            elif "caption" not in kwargs:
+                raise ValueError("Either 'caption_field' or 'caption' must be provided")
         
-        if operation == "segmentation":
-            if "expression_field" not in kwargs and "expression" not in kwargs:
-                raise ValueError("Either 'expression_field' or 'expression' must be provided for segmentation operation")
-        
-        # Set operation and parameters
+        elif operation == "segmentation":
+            if "expression_field" in kwargs:
+                # Tell FiftyOne we need the expression field
+                self.needs_fields = {kwargs["expression_field"]: kwargs["expression_field"]}
+            elif "expression" not in kwargs:
+                raise ValueError("Either 'expression_field' or 'expression' must be provided")
+        else:
+            self.needs_fields = {}
+
         self.operation = operation
         self.params = kwargs
-        
         return self
+
 
     @property
     def media_type(self):
@@ -476,103 +443,55 @@ class Florence2(fom.Model):
         # Convert to FiftyOne Detections format
         return self._extract_detections(parsed_answer, task, image)
 
-    def _predict_phrase_grounding(self, image: Image.Image) -> Detections:
-        """Ground caption phrases in an image using the Florence2 model.
-        
-        This method performs phrase grounding by identifying regions in the image that
-        correspond to specific phrases from a caption.
-
-        Args:
-            image (Image.Image): PIL Image object containing the image to analyze
-            
-        Returns:
-            Detections: FiftyOne Detections object containing the grounded phrases.
-        """
-        # Get the phrase grounding task configuration
+    def _predict_phrase_grounding(self, image: Image.Image, sample) -> Detections:
+        """Ground caption phrases in an image using the Florence2 model."""
         task = FLORENCE2_OPERATIONS["phrase_grounding"]["task"]
         
-        # Determine caption input - either direct caption or field reference
-        if "caption" in self.params:
-            # Use directly provided caption string
-            caption = self.params["caption"]
+        # Get caption from sample if caption_field is specified
+        if "caption_field" in self.params:
+            caption = sample[self.params["caption_field"]]  # This will now work because we declared needs_fields
         else:
-            # Use caption from specified field (resolved by caller)
-            caption = self.params["caption_field"]
+            caption = self.params["caption"]
         
-        # Format the input by combining task instruction and caption
         text_input = f"{task}\n{caption}"
-        
-        # Run model inference and parse the output
         parsed_answer = self._generate_and_parse(image, task, text_input=text_input)
-        
-        # Convert parsed output to FiftyOne Detections format
         return self._extract_detections(parsed_answer, task, image)
 
-    def _predict_segmentation(self, image: Image.Image) -> Optional[Polylines]:
-        """Segment an object in an image based on a referring expression.
-        
-        This method performs instance segmentation by generating a polygon mask around
-        an object described by a natural language expression.
-
-        Args:
-            image (Image.Image): PIL Image object containing the image to analyze
-
-        Returns:
-            Optional[Polylines]: FiftyOne Polylines object containing the segmentation
-                mask as a polygon, or None if no matching object is found in the image
-        """
-        # Get the segmentation task configuration from Florence2 operations
+    def _predict_segmentation(self, image: Image.Image, sample) -> Optional[Polylines]:
+        """Segment an object in an image based on a referring expression."""
         task = FLORENCE2_OPERATIONS["segmentation"]["task"]
         
-        # Determine the referring expression - either direct text or field reference
-        if "expression" in self.params:
-            # Use directly provided expression string
-            expression = self.params["expression"]
+        # Get expression from sample if expression_field is specified
+        if "expression_field" in self.params:
+            expression = sample[self.params["expression_field"]]
         else:
-            # Use expression from specified field (resolved by caller)
-            expression = self.params["expression_field"] 
+            expression = self.params["expression"]
         
-        # Format the input by combining task instruction and referring expression
         text_input = f"{task}\nExpression: {expression}"
-        
-        # Run model inference and parse the output
         parsed_answer = self._generate_and_parse(image, task, text_input=text_input)
-        
-        # Convert parsed output to FiftyOne Polylines format
         return self._extract_polylines(parsed_answer, task, image)
 
-    def _predict(self, image: Image.Image) -> Any:
-        """Process a single image with Florence2 model.
+    def _predict(self, image: Image.Image, sample=None) -> Any:
+        """Process a single image with Florence2 model."""
+        if self.operation == "phrase_grounding":
+            return self._predict_phrase_grounding(image, sample)
+        elif self.operation == "segmentation":
+            return self._predict_segmentation(image, sample)
         
-        This internal method handles routing the image to the appropriate prediction
-        method based on the operation type.
-
-        Args:
-            image (Image.Image): PIL Image object to process with the model
-            
-        Returns:
-            Any: Operation-specific result type
-        """
-        # Map operation names to their corresponding prediction methods
+        # For operations that don't need sample data
         prediction_methods = {
             "caption": self._predict_caption,
             "ocr": self._predict_ocr,
             "detection": self._predict_detection,
-            "phrase_grounding": self._predict_phrase_grounding,
-            "segmentation": self._predict_segmentation
         }
         
-        # Get the prediction method for the requested operation
         predict_method = prediction_methods.get(self.operation)
-
-        # Raise error if operation type is not supported
         if predict_method is None:
             raise ValueError(f"Unknown operation: {self.operation}")
             
-        # Call the appropriate prediction method with the image
         return predict_method(image)
-
-    def predict(self, image: np.ndarray, **kwargs) -> Any:
+    
+    def predict(self, image: np.ndarray, sample=None, **kwargs) -> Any:
         """Process an image array with Florence2 model."""
         logger.info("Starting prediction...")
         logger.info(f"Operation: {self.operation}")
@@ -581,7 +500,7 @@ class Florence2(fom.Model):
         try:
             # Convert numpy array to PIL Image
             pil_image = Image.fromarray(image)
-            result = self._predict(pil_image)
+            result = self._predict(pil_image, sample)  # Pass sample through to _predict
             logger.info(f"Prediction successful: {result}")
             return result
         except Exception as e:
