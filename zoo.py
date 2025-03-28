@@ -248,7 +248,7 @@ class Florence2(fom.Model, fom.SamplesMixin):
         image: Image.Image,
         task: str,
         text_input: Optional[str] = None,
-        max_new_tokens: int = 1024,
+        max_new_tokens: int = 3072,
         num_beams: int = 3,
     ):
         """Generate and parse a response from the model.
