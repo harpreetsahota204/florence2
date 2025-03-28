@@ -11,7 +11,6 @@ from PIL import Image
 
 import fiftyone.core.models as fom
 from fiftyone.core.labels import Detection, Detections, Polyline, Polylines
-
 from transformers import AutoModelForCausalLM, AutoProcessor
 
 # Define operation configurations
@@ -191,8 +190,8 @@ class Florence2(fom.Model):
         logger.info(f"Using device: {self.device}")
 
         self.torch_dtype = torch.float16 if torch.cuda.is_available() else None
-        logger.info(f"Using dtype: {self.torch_dtype}")
     
+        
             
         # Check if model_path is a local directory or HuggingFace model ID
         if os.path.isdir(model_path):
@@ -282,7 +281,7 @@ class Florence2(fom.Model):
         image: Image.Image,
         task: str,
         text_input: Optional[str] = None,
-        max_new_tokens: int = 4096,
+        max_new_tokens: int = 1024,
         num_beams: int = 3,
     ):
         """Generate and parse a response from the model.
@@ -407,31 +406,23 @@ class Florence2(fom.Model):
         return Polylines(polylines=polylines)
 
     def _predict_caption(self, image: Image.Image) -> str:
-        """Generate a natural language caption describing the input image.
+        """Generate a caption for the image."""
+        logger.info("Starting caption generation...")
         
-        This method uses the Florence-2 model to generate a descriptive caption for the image.
-        The level of detail in the caption can be controlled via the "detail_level" parameter.
-
-        Args:
-            image: PIL Image object containing the image to be captioned
-            
-        Returns:
-            str: A natural language caption describing the contents and context of the image
-        """
-        # Get the requested caption detail level, defaulting to "basic"
         detail_level = self.params.get("detail_level", "basic")
+        logger.info(f"Caption detail level: {detail_level}")
         
-        # Get the mapping of detail levels to Florence-2 task specifications
         task_mapping = FLORENCE2_OPERATIONS["caption"]["task_mapping"]
+        task = task_mapping.get(detail_level, task_mapping["basic"])
+        logger.info(f"Using task: {task}")
         
-        # Look up the appropriate task for the detail level, falling back to default if not found
-        task = task_mapping.get(detail_level, task_mapping[None])
-            
-        # Generate the caption by running the model and parsing its output
-        parsed_answer = self._generate_and_parse(image, task)
-        
-        # Extract and return just the caption text from the parsed response
-        return parsed_answer[task]
+        try:
+            parsed_answer = self._generate_and_parse(image, task)
+            logger.info(f"Parsed answer: {parsed_answer}")
+            return parsed_answer[task]
+        except Exception as e:
+            logger.error(f"Caption generation failed: {str(e)}", exc_info=True)
+            raise
 
     def _predict_ocr(self, image: Image.Image) -> Union[str, Detections]:
         """Perform Optical Character Recognition (OCR) on an input image.
@@ -467,29 +458,22 @@ class Florence2(fom.Model):
             return parsed_answer[task]
 
     def _predict_detection(self, image: Image.Image) -> Detections:
-        """Detect objects in an image using the Florence2 model.
+        """Detect objects in an image using the Florence2 model."""
+        # Get detection type - must be explicitly provided
+        detection_type = self.params["detection_type"]  # Will raise KeyError if not provided
         
-        This method performs object detection on the input image. It supports multiple modes
-        based on the detection_type parameter.
+        # Get the task from mapping - no fallback
+        task = FLORENCE2_OPERATIONS["detection"]["task_mapping"][detection_type]  # Will raise KeyError if invalid type
         
-        Args:
-            image (Image.Image): PIL Image object containing the image to analyze
-            
-        Returns:
-            Detections: FiftyOne Detections object containing the detected objects.
-        """
-        # Get detection parameters from self.params, defaulting to None if not specified
-        detection_type = self.params.get("detection_type", None)
-        text_prompt = self.params.get("text_prompt", None)
+        # Only require and use text_prompt for open_vocabulary_detection
+        if detection_type == "open_vocabulary_detection":
+            text_prompt = self.params["text_prompt"]  # Will raise KeyError if not provided for open vocab detection
+            text_input = f"{task}\n{text_prompt}"
+            parsed_answer = self._generate_and_parse(image, task, text_input=text_input)
+        else:
+            parsed_answer = self._generate_and_parse(image, task)
         
-        # Look up the appropriate Florence2 task based on detection_type
-        task_mapping = FLORENCE2_OPERATIONS["detection"]["task_mapping"]
-        task = task_mapping.get(detection_type, task_mapping[None])  # Fall back to default if type not found
-        
-        # Run the model and parse its output, passing text_prompt if provided
-        parsed_answer = self._generate_and_parse(image, task, text_input=text_prompt)
-        
-        # Convert the parsed model output into FiftyOne's Detections format
+        # Convert to FiftyOne Detections format
         return self._extract_detections(parsed_answer, task, image)
 
     def _predict_phrase_grounding(self, image: Image.Image) -> Detections:
@@ -589,28 +573,17 @@ class Florence2(fom.Model):
         return predict_method(image)
 
     def predict(self, image: np.ndarray, **kwargs) -> Any:
-        """Process an image array with Florence2 model.
+        """Process an image array with Florence2 model."""
+        logger.info("Starting prediction...")
+        logger.info(f"Operation: {self.operation}")
+        logger.info(f"Parameters: {self.params}")
         
-        Args:
-            image (np.ndarray): Input image as a numpy array in RGB format 
-            **kwargs: Operation-specific parameters including 'operation'
-            
-        Returns:
-            Any: Operation-specific result type
-        """
-        # Extract operation from kwargs
-        operation = kwargs.pop("operation", None)
-        
-        # If operation is provided, set it (along with other parameters)
-        if operation is not None:
-            self.set_operation(operation, **kwargs)
-                
-        # Ensure an operation is set
-        if self.operation is None:
-            raise ValueError("No operation set. Either call set_operation() first, or pass operation parameter.")
-        
-        # Convert numpy array to PIL Image format required by Florence2
-        pil_image = Image.fromarray(image)
-        
-        # Route through internal prediction pipeline
-        return self._predict(pil_image)
+        try:
+            # Convert numpy array to PIL Image
+            pil_image = Image.fromarray(image)
+            result = self._predict(pil_image)
+            logger.info(f"Prediction successful: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Prediction failed: {str(e)}", exc_info=True)
+            raise
