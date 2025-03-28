@@ -12,6 +12,8 @@ from PIL import Image
 import fiftyone.core.models as fom
 from fiftyone.core.labels import Detection, Detections, Polyline, Polylines
 
+from transformers import AutoModelForCausalLM, AutoProcessor
+
 # Define operation configurations
 FLORENCE2_OPERATIONS = {
     "caption": {
@@ -189,9 +191,8 @@ class Florence2(fom.Model):
         logger.info(f"Using device: {self.device}")
 
         self.torch_dtype = torch.float16 if torch.cuda.is_available() else None
-        
-        # Lazy loading of transformer components
-        from transformers import AutoModelForCausalLM, AutoProcessor
+        logger.info(f"Using dtype: {self.torch_dtype}")
+    
             
         # Check if model_path is a local directory or HuggingFace model ID
         if os.path.isdir(model_path):
@@ -281,7 +282,7 @@ class Florence2(fom.Model):
         image: Image.Image,
         task: str,
         text_input: Optional[str] = None,
-        max_new_tokens: int = 1024,
+        max_new_tokens: int = 4096,
         num_beams: int = 3,
     ):
         """Generate and parse a response from the model.
