@@ -29,8 +29,7 @@ FLORENCE2_OPERATIONS = {
         "region_task": "<OCR_WITH_REGION>"
     },
     "detection": {
-        "params": {"detection_type": ["detection", "dense_region_caption", "region_proposal", "open_vocabulary_detection"],
-                   "text_prompt": str},
+        "params": {"detection_type": ["detection", "dense_region_caption", "region_proposal", "open_vocabulary_detection"]},
         "task_mapping": {
             "detection": "<OD>",
             "dense_region_caption": "<DENSE_REGION_CAPTION>",
@@ -39,11 +38,11 @@ FLORENCE2_OPERATIONS = {
         }
     },
     "phrase_grounding": {
-        "params": {"caption_field": str, "caption": str},
+        "params": {},  # Removed caption_field, now using universal prompt
         "task": "<CAPTION_TO_PHRASE_GROUNDING>"
     },
     "segmentation": {
-        "params": {"expression": str, "expression_field": str},
+        "params": {},  # Removed expression_field, now using universal prompt
         "task": "<REFERRING_EXPRESSION_SEGMENTATION>"
     }
 }
@@ -143,7 +142,7 @@ def _convert_polyline(contour, width, height):
     return xy_points
 
 
-class Florence2(fom.Model, fom.SamplesMixin):
+class Florence2(fom.SamplesMixin, fom.Model):
     """A FiftyOne model for running the Florence-2 multimodal model.
     
     The Florence-2 model supports multiple vision-language tasks including:
@@ -161,6 +160,8 @@ class Florence2(fom.Model, fom.SamplesMixin):
     def __init__(
         self, 
         model_path: str,
+        operation: str = None,
+        prompt: str = None,
         **kwargs
     ):
         """Initialize the Florence-2 model.
@@ -173,17 +174,20 @@ class Florence2(fom.Model, fom.SamplesMixin):
         """
         if not model_path:
             raise ValueError("model_path is required")
-            
+        
+        self._fields = {}
         self.model_path = model_path
+        self._prompt = prompt
+        self._operation = None
+        self.params = kwargs
         
-        # Operation and parameters will be set at apply time by default
-        self.operation = None
-        self.params = {}
-        
-        # If operation is provided in kwargs, set it now
-        if "operation" in kwargs:
-            operation = kwargs.pop("operation")
-            self.set_operation(operation, **kwargs)
+        # Set initial operation if provided
+        if operation:
+            self.operation = operation  # Use the property setter
+            
+        # Store additional parameters
+        for key, value in kwargs.items():
+            self.params[key] = value
         
         # Set device
         self.device = get_device()
@@ -212,31 +216,75 @@ class Florence2(fom.Model, fom.SamplesMixin):
             trust_remote_code=True
         )
 
-    def set_operation(self, operation: str, **kwargs):
-        """Set the current operation and parameters."""
-        if operation not in FLORENCE2_OPERATIONS:
-            raise ValueError(f"Invalid operation: {operation}. Must be one of {list(FLORENCE2_OPERATIONS.keys())}")
-        
-        if operation == "phrase_grounding":
-            if "caption_field" in kwargs:
-                # Tell FiftyOne we need the caption field
-                self.needs_fields = {kwargs["caption_field"]: kwargs["caption_field"]}
-            elif "caption" not in kwargs:
-                raise ValueError("Either 'caption_field' or 'caption' must be provided")
-        
-        elif operation == "segmentation":
-            if "expression_field" in kwargs:
-                # Tell FiftyOne we need the expression field
-                self.needs_fields = {kwargs["expression_field"]: kwargs["expression_field"]}
-            elif "expression" not in kwargs:
-                raise ValueError("Either 'expression_field' or 'expression' must be provided")
+    def _get_field(self):
+        """Get the field name to use for prompt extraction."""
+        if "prompt_field" in self.needs_fields:
+            prompt_field = self.needs_fields["prompt_field"]
         else:
-            self.needs_fields = {}
+            prompt_field = next(iter(self.needs_fields.values()), None)
+        return prompt_field
 
-        self.operation = operation
-        self.params = kwargs
-        return self
+    @property
+    def operation(self):
+        """Get the current operation."""
+        return self._operation
 
+    @operation.setter
+    def operation(self, value):
+        """Set the operation with validation."""
+        if value not in FLORENCE2_OPERATIONS:
+            raise ValueError(f"Invalid operation: {value}. Must be one of {list(FLORENCE2_OPERATIONS.keys())}")
+        self._operation = value
+
+    @property
+    def prompt(self):
+        """Get the current prompt text."""
+        return self._prompt
+
+    @prompt.setter
+    def prompt(self, value):
+        """Set the prompt text."""
+        self._prompt = value
+
+    @property
+    def detail_level(self):
+        """Get the caption detail level."""
+        return self.params.get("detail_level", "basic")
+
+    @detail_level.setter
+    def detail_level(self, value):
+        """Set the caption detail level."""
+        valid_levels = FLORENCE2_OPERATIONS["caption"]["params"]["detail_level"]
+        if value not in valid_levels:
+            raise ValueError(f"Invalid detail level: {value}. Must be one of {valid_levels}")
+        self.params["detail_level"] = value
+
+    # Store region info for OCR operation
+    @property
+    def store_region_info(self):
+        """Get whether to store region info for OCR."""
+        return self.params.get("store_region_info", False)
+
+    @store_region_info.setter
+    def store_region_info(self, value):
+        """Set whether to store region info for OCR."""
+        if not isinstance(value, bool):
+            raise ValueError("store_region_info must be a boolean")
+        self.params["store_region_info"] = value
+
+    # Detection type for detection operation
+    @property
+    def detection_type(self):
+        """Get the detection type."""
+        return self.params.get("detection_type", "detection")
+
+    @detection_type.setter
+    def detection_type(self, value):
+        """Set the detection type."""
+        valid_types = FLORENCE2_OPERATIONS["detection"]["params"]["detection_type"]
+        if value not in valid_types:
+            raise ValueError(f"Invalid detection type: {value}. Must be one of {valid_types}")
+        self.params["detection_type"] = value
 
     @property
     def media_type(self):
@@ -386,7 +434,8 @@ class Florence2(fom.Model, fom.SamplesMixin):
         try:
             parsed_answer = self._generate_and_parse(image, task)
             logger.info(f"Parsed answer: {parsed_answer}")
-            return parsed_answer[task]
+            caption = parsed_answer[task].strip()  # Add strip() here to remove whitespace
+            return caption
         except Exception as e:
             logger.error(f"Caption generation failed: {str(e)}", exc_info=True)
             raise
@@ -426,63 +475,62 @@ class Florence2(fom.Model, fom.SamplesMixin):
 
     def _predict_detection(self, image: Image.Image) -> Detections:
         """Detect objects in an image using the Florence2 model."""
-        # Get detection type - must be explicitly provided
-        detection_type = self.params["detection_type"]  # Will raise KeyError if not provided
+
+        detection_type = self.params.get("detection_type", "detection")
+        task = FLORENCE2_OPERATIONS["detection"]["task_mapping"][detection_type]
         
-        # Get the task from mapping - no fallback
-        task = FLORENCE2_OPERATIONS["detection"]["task_mapping"][detection_type]  # Will raise KeyError if invalid type
-        
-        # Only require and use text_prompt for open_vocabulary_detection
         if detection_type == "open_vocabulary_detection":
-            text_prompt = self.params["text_prompt"]  # Will raise KeyError if not provided for open vocab detection
-            text_input = f"{task}\n{text_prompt}"
+            if not self.prompt:
+                raise ValueError("prompt is required for open_vocabulary_detection")
+            text_input = f"{task}\n{self.prompt}"
             parsed_answer = self._generate_and_parse(image, task, text_input=text_input)
         else:
             parsed_answer = self._generate_and_parse(image, task)
         
-        # Convert to FiftyOne Detections format
         return self._extract_detections(parsed_answer, task, image)
 
-    def _predict_phrase_grounding(self, image: Image.Image, sample) -> Detections:
+    def _predict_phrase_grounding(self, image: Image.Image) -> Detections:
         """Ground caption phrases in an image using the Florence2 model."""
         task = FLORENCE2_OPERATIONS["phrase_grounding"]["task"]
         
-        # Get caption from sample if caption_field is specified
-        if "caption_field" in self.params:
-            caption = sample[self.params["caption_field"]]  # This will now work because we declared needs_fields
-        else:
-            caption = self.params["caption"]
+        # Use self.prompt instead of extracting from sample
+        if not self.prompt:
+            raise ValueError("No caption provided for phrase grounding")
         
-        text_input = f"{task}\n{caption}"
+        text_input = f"{task}\n{self.prompt}"
         parsed_answer = self._generate_and_parse(image, task, text_input=text_input)
         return self._extract_detections(parsed_answer, task, image)
 
-    def _predict_segmentation(self, image: Image.Image, sample) -> Optional[Polylines]:
+    def _predict_segmentation(self, image: Image.Image) -> Optional[Polylines]:
         """Segment an object in an image based on a referring expression."""
         task = FLORENCE2_OPERATIONS["segmentation"]["task"]
         
-        # Get expression from sample if expression_field is specified
-        if "expression_field" in self.params:
-            expression = sample[self.params["expression_field"]]
-        else:
-            expression = self.params["expression"]
+        if not self.prompt:
+            raise ValueError("No expression provided for segmentation")
         
-        text_input = f"{task}\nExpression: {expression}"
+        text_input = f"{task}\nExpression: {self.prompt}"
         parsed_answer = self._generate_and_parse(image, task, text_input=text_input)
         return self._extract_polylines(parsed_answer, task, image)
 
     def _predict(self, image: Image.Image, sample=None) -> Any:
         """Process a single image with Florence2 model."""
-        if self.operation == "phrase_grounding":
-            return self._predict_phrase_grounding(image, sample)
-        elif self.operation == "segmentation":
-            return self._predict_segmentation(image, sample)
+        # Centralized field handling
+        if sample is not None and self._get_field() is not None:
+            field_value = sample.get_field(self._get_field())
+            if field_value is not None:
+                self._prompt = str(field_value)
         
-        # For operations that don't need sample data
+        # Check if operation is set
+        if not self.operation:
+            raise ValueError("No operation has been set")
+        
+        # Route to appropriate method
         prediction_methods = {
             "caption": self._predict_caption,
             "ocr": self._predict_ocr,
             "detection": self._predict_detection,
+            "phrase_grounding": self._predict_phrase_grounding,
+            "segmentation": self._predict_segmentation,
         }
         
         predict_method = prediction_methods.get(self.operation)
