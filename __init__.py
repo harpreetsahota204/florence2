@@ -1,8 +1,3 @@
-from huggingface_hub import snapshot_download
-
-"""
-Florence-2 model from https://huggingface.co/microsoft/Florence-2-base-ft.
-"""
 import logging
 import os
 
@@ -162,38 +157,3 @@ def resolve_input(model_name, ctx):
     )
     
     return types.Property(inputs)
-
-
-# def parse_parameters(model_name, ctx, params):
-#     """Processes and validates the model's custom parameters.
-
-#     Args:
-#         model_name: the name of the model
-#         ctx: an ExecutionContext
-#         params: a params dict
-        
-#     Raises:
-#         ValueError: If required parameters are missing
-#     """
-#     # Ensure operation is specified
-#     if "operation" not in params:
-#         raise ValueError("Operation must be specified")
-        
-#     operation = params["operation"]
-    
-#     # Validate required parameters for specific operations
-#     if operation == "phrase_grounding":
-#         if not params.get("caption") and not params.get("caption_field"):
-#             raise ValueError("Either 'caption' or 'caption_field' must be provided for phrase grounding")
-            
-#         # If both are provided, raise an error
-#         if params.get("caption") and params.get("caption_field"):
-#             raise ValueError("Only ONE of 'caption' or 'caption_field' can be provided for phrase grounding")
-            
-#     if operation == "segmentation":
-#         if not params.get("expression") and not params.get("expression_field"):
-#             raise ValueError("Either 'expression' or 'expression_field' must be provided for segmentation")
-            
-#         # If both are provided, prefer expression over expression_field  
-#         if params.get("expression") and params.get("expression_field"):
-#             raise ValueError("Only ONE of 'expression' or 'expression_field' can be provided for segmentation")
