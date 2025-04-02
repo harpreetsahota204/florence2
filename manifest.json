@@ -1,4 +1,6 @@
 {
+    "name": "Florence2",
+    "url": "https://github.com/harpreetsahota204/florence2",
     "models": [
         {
             "base_name": "microsoft/Florence-2-base",
@@ -152,7 +154,5 @@
             ],
             "date_added": "2025-03-25T00:00:00"
         }
-    ],
-    "name": "florence2",
-    "url": "https://github.com/harpreetsahota204/florence2"
+    ]
 }
