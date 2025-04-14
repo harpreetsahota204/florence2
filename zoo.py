@@ -216,6 +216,8 @@ class Florence2(fom.SamplesMixin, fom.Model):
             trust_remote_code=True
         )
 
+        self.model.eval()
+
     def _get_field(self):
         """Get the field name to use for prompt extraction."""
         if "prompt_field" in self.needs_fields:
@@ -296,7 +298,7 @@ class Florence2(fom.SamplesMixin, fom.Model):
         image: Image.Image,
         task: str,
         text_input: Optional[str] = None,
-        max_new_tokens: int = 2048,
+        max_new_tokens: int = 3072,
         num_beams: int = 3,
     ):
         """Generate and parse a response from the model.
@@ -325,13 +327,14 @@ class Florence2(fom.SamplesMixin, fom.Model):
                 else:
                     inputs[key] = inputs[key].to(self.device)
 
-        generated_ids = self.model.generate(
-            input_ids=inputs["input_ids"],
-            pixel_values=inputs["pixel_values"],
-            max_new_tokens=max_new_tokens,
-            num_beams=num_beams,
-            do_sample=False,
-        )
+        with torch.no_grad():
+            generated_ids = self.model.generate(
+                input_ids=inputs["input_ids"],
+                pixel_values=inputs["pixel_values"],
+                max_new_tokens=max_new_tokens,
+                num_beams=num_beams,
+                do_sample=False,
+            )
         generated_text = self.processor.batch_decode(
             generated_ids, 
             skip_special_tokens=False
