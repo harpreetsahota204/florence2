@@ -11,7 +11,7 @@ from PIL import Image
 
 import fiftyone.core.models as fom
 from fiftyone.core.labels import Detection, Detections, Polyline, Polylines
-from transformers import AutoModelForImageTextToText, AutoProcessor
+from transformers import AutoModelForCausalLM, AutoProcessor
 
 # Define operation configurations
 FLORENCE2_OPERATIONS = {
@@ -204,7 +204,7 @@ class Florence2(fom.SamplesMixin, fom.Model):
             self.torch_dtype = torch.float32
 
         # Initialize model
-        self.model = AutoModelForImageTextToText.from_pretrained(
+        self.model = AutoModelForCausalLM.from_pretrained(
             model_path, 
             trust_remote_code=True,
             **model_kwargs
