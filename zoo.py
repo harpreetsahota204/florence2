@@ -348,7 +348,7 @@ class Florence2(fom.SamplesMixin, fom.Model):
         for key in inputs:
             if torch.is_tensor(inputs[key]):
                 if torch.cuda.is_available() and key == "pixel_values":
-                    inputs[key] = inputs[key].to(self.device, self.torch_dtype)
+                    inputs[key] = inputs[key].to(self.device, self.model.torch_dtype)
                 else:
                     inputs[key] = inputs[key].to(self.device)
 
