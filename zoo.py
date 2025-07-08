@@ -211,7 +211,7 @@ class Florence2(fom.SamplesMixin, fom.Model):
             
             # Enable bfloat16 on Ampere+ GPUs (compute capability 8.0+) 
             # or apply it anyway if quantized is not enabled
-            if capability[0] >= 8 or self.quantized is not True:
+            if capability[0] >= 8:
                 model_kwargs["torch_dtype"] = torch.bfloat16
             
             # Apply quantization only on CUDA devices if requested
