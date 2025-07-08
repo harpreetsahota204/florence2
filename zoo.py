@@ -220,7 +220,7 @@ class Florence2(fom.SamplesMixin, fom.Model):
         elif self.quantized:
             logger.warning("Quantization is only supported on CUDA devices. Ignoring quantization request.")
         
-        self.torch_dtype = model_kwargs.get("torch_dtype", None)
+        self.torch_dtype = model_kwargs.get("torch_dtype", torch.float16)
         # Initialize model
         self.model = AutoModelForCausalLM.from_pretrained(
             model_path, 
