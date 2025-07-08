@@ -208,7 +208,6 @@ class Florence2(fom.SamplesMixin, fom.Model):
         else:
             self.torch_dtype = torch.float32
 
-        self.torch_dtype = model_kwargs.get("torch_dtype")
         # Initialize model
         self.model = AutoModelForCausalLM.from_pretrained(
             model_path, 
