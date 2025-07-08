@@ -197,15 +197,20 @@ class Florence2(fom.SamplesMixin, fom.Model):
 
         model_kwargs = {"device_map": self.device}
         
-        # Only set dtype optimizations, no quantization
+        # Set dtype optimizations
         if self.device == "cuda" and torch.cuda.is_available():
             capability = torch.cuda.get_device_capability(self.device)
             if capability[0] >= 8:
+                # Newer GPUs (A100, H100, etc.) can use bfloat16
                 model_kwargs["torch_dtype"] = torch.bfloat16
                 self.torch_dtype = torch.bfloat16
             else:
-                self.torch_dtype = torch.float32
+                # Older GPUs (T4, V100, etc.) use float16
+                model_kwargs["torch_dtype"] = torch.float16 
+                self.torch_dtype = torch.float16
         else:
+            # CPU/MPS use float32
+            model_kwargs["torch_dtype"] = torch.float32
             self.torch_dtype = torch.float32
 
         # Initialize model
