@@ -195,24 +195,20 @@ class Florence2(fom.SamplesMixin, fom.Model):
         self.device = get_device()
         logger.info(f"Using device: {self.device}")
 
-        model_kwargs = {
-            "device_map": self.device,
-        }
-
-        # Set optimizations based on CUDA device capabilities
+        model_kwargs = {"device_map": self.device}
+        
+        # Only set dtype optimizations, no quantization
         if self.device == "cuda" and torch.cuda.is_available():
             capability = torch.cuda.get_device_capability(self.device)
-            
-            # Enable flash attention if available
-            if is_flash_attn_2_available():
-                model_kwargs["attn_implementation"] = "flash_attention_2"
-            
-            # Enable bfloat16 on Ampere+ GPUs (compute capability 8.0+) 
-            # or apply it anyway if quantized is not enabled
             if capability[0] >= 8:
                 model_kwargs["torch_dtype"] = torch.bfloat16
+                self.torch_dtype = torch.bfloat16
+            else:
+                self.torch_dtype = torch.float32
+        else:
+            self.torch_dtype = torch.float32
 
-        self.torch_dtype = model_kwargs.get("torch_dtype", torch.float16)
+        self.torch_dtype = model_kwargs.get("torch_dtype")
         # Initialize model
         self.model = AutoModelForCausalLM.from_pretrained(
             model_path, 
