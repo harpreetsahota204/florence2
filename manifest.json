@@ -136,7 +136,7 @@
                     "torchvision",
                     "einops",
                     "timm",
-                    "accelerate",
+                    "accelerate"
                 ],
                 "cpu": {
                     "support": true
