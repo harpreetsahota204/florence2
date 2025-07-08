@@ -164,7 +164,6 @@ class Florence2(fom.SamplesMixin, fom.Model):
         model_path: str,
         operation: str = None,
         prompt: str = None,
-        quantized:bool = None,
         **kwargs
     ):
         """Initialize the Florence-2 model.
@@ -180,7 +179,6 @@ class Florence2(fom.SamplesMixin, fom.Model):
         
         self._fields = {}
         self.model_path = model_path
-        self.quantized = quantized
         self._prompt = prompt
         self._operation = None
         self.params = kwargs
@@ -213,13 +211,7 @@ class Florence2(fom.SamplesMixin, fom.Model):
             # or apply it anyway if quantized is not enabled
             if capability[0] >= 8:
                 model_kwargs["torch_dtype"] = torch.bfloat16
-            
-            # Apply quantization only on CUDA devices if requested
-            if self.quantized:
-                model_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
-        elif self.quantized:
-            logger.warning("Quantization is only supported on CUDA devices. Ignoring quantization request.")
-        
+
         self.torch_dtype = model_kwargs.get("torch_dtype", torch.float16)
         # Initialize model
         self.model = AutoModelForCausalLM.from_pretrained(
