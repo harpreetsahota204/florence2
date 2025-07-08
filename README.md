@@ -1,5 +1,7 @@
 # Florence2 FiftyOne Remote Model Zoo Implementation
 
+### As of now, Florence2 only works in transformers<4.50.0
+
 This repository provides a FiftyOne Model Zoo implementation for Florence-2, Microsoft's powerful multimodal model. The implementation allows seamless integration of Florence-2's capabilities with FiftyOne's computer vision tools.
 
 > **NOTE**: Due to recent changes in Transformers 4.50.0 (which are to be patched by Hugging Face) please ensure you have transformers<=4.49.0 installed before running the model
