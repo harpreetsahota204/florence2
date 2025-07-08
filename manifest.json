@@ -22,7 +22,8 @@
                     "torchvision",
                     "einops",
                     "timm",
-                    "accelerate"
+                    "accelerate",
+                    "bitsandbytes"
                 ],
                 "cpu": {
                     "support": true
@@ -60,7 +61,8 @@
                     "torchvision",
                     "einops",
                     "timm",
-                    "accelerate"
+                    "accelerate",
+                    "bitsandbytes"
                 ],
                 "cpu": {
                     "support": true
@@ -98,7 +100,8 @@
                     "torchvision",
                     "einops",
                     "timm",
-                    "accelerate"
+                    "accelerate",
+                    "bitsandbytes"
                 ],
                 "cpu": {
                     "support": true
@@ -136,7 +139,8 @@
                     "torchvision",
                     "einops",
                     "timm",
-                    "accelerate"
+                    "accelerate",
+                    "bitsandbytes"
                 ],
                 "cpu": {
                     "support": true

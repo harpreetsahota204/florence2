@@ -12,6 +12,8 @@ from PIL import Image
 import fiftyone.core.models as fom
 from fiftyone.core.labels import Detection, Detections, Polyline, Polylines
 from transformers import AutoModelForCausalLM, AutoProcessor
+from transformers import BitsAndBytesConfig
+from transformers.utils.import_utils import is_flash_attn_2_available
 
 # Define operation configurations
 FLORENCE2_OPERATIONS = {
@@ -162,6 +164,7 @@ class Florence2(fom.SamplesMixin, fom.Model):
         model_path: str,
         operation: str = None,
         prompt: str = None,
+        quantized:bool = None,
         **kwargs
     ):
         """Initialize the Florence-2 model.
@@ -177,6 +180,7 @@ class Florence2(fom.SamplesMixin, fom.Model):
         
         self._fields = {}
         self.model_path = model_path
+        self.quantized = quantized
         self._prompt = prompt
         self._operation = None
         self.params = kwargs
@@ -193,23 +197,35 @@ class Florence2(fom.SamplesMixin, fom.Model):
         self.device = get_device()
         logger.info(f"Using device: {self.device}")
 
-        self.torch_dtype = torch.float16 if torch.cuda.is_available() else None
+        model_kwargs = {
+            "device_map": self.device,
+        }
 
-        logger.info(f"Loading model from local path: {model_path}")
+        # Set optimizations based on CUDA device capabilities
+        if self.device == "cuda" and torch.cuda.is_available():
+            capability = torch.cuda.get_device_capability(self.device)
+            
+            # Enable flash attention if available
+            if is_flash_attn_2_available():
+                model_kwargs["attn_implementation"] = "flash_attention_2"
+            
+            # Enable bfloat16 on Ampere+ GPUs (compute capability 8.0+) 
+            # or apply it anyway if quantized is not enabled
+            if capability[0] >= 8 or self.quantized is not True:
+                model_kwargs["torch_dtype"] = torch.bfloat16
+            
+            # Apply quantization only on CUDA devices if requested
+            if self.quantized:
+                model_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+        elif self.quantized:
+            logger.warning("Quantization is only supported on CUDA devices. Ignoring quantization request.")
+        
         # Initialize model
-        if self.torch_dtype:
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_path, 
-                trust_remote_code=True,
-                device_map=self.device,
-                torch_dtype=self.torch_dtype
-            )
-        else:
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_path, 
-                trust_remote_code=True,
-                device_map=self.device
-            )
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_path, 
+            trust_remote_code=True,
+            **model_kwargs
+        )
 
         self.processor = AutoProcessor.from_pretrained(
             model_path, 
